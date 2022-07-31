@@ -356,7 +356,7 @@ defmodule Sentry.ClientTest do
            end) =~ "Failed to send Sentry event. Unable to encode JSON"
   end
 
-  describe "exceptions, throws, and exits" do
+  describe "catches exceptions, throws, and exits" do
     setup :verify_on_exit!
 
     setup do
@@ -368,48 +368,73 @@ defmodule Sentry.ClientTest do
       :ok
     end
 
-    test "handles exits" do
+    test "catches exit and logs error with stacktrace" do
       expect(Sentry.MockClient, :post, fn _url, _headers, _body -> exit(:timeout) end)
 
       try do
         apply(Event, :not_a_function, [])
       rescue
         e ->
-          capture_log(fn ->
-            {:ok, task} = Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
-            assert {:error, {:request_failure, {:exit, :timeout, _stacktrace}}} = Task.await(task)
-          end)
+          log =
+            capture_log(fn ->
+              {:ok, task} =
+                Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
+
+              assert {:error, {:request_failure, {:exit, :timeout}}} = Task.await(task)
+            end)
+
+          assert log =~ """
+                 Failed to send Sentry event. Attempt 1.
+                 ** (exit) time out
+                     test/client_test.exs:\
+                 """
       end
     end
 
-    test "handles throws" do
+    test "catches throw and logs error with stacktrace" do
       expect(Sentry.MockClient, :post, fn _url, _headers, _body -> throw(:error) end)
 
       try do
         apply(Event, :not_a_function, [])
       rescue
         e ->
-          capture_log(fn ->
-            {:ok, task} = Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
-            assert {:error, {:request_failure, {:throw, :error, _stacktrace}}} = Task.await(task)
-          end)
+          log =
+            capture_log(fn ->
+              {:ok, task} =
+                Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
+
+              assert {:error, {:request_failure, {:throw, :error}}} = Task.await(task)
+            end)
+
+          assert log =~ """
+                 Failed to send Sentry event. Attempt 1.
+                 ** (throw) :error
+                     test/client_test.exs:\
+                 """
       end
     end
 
-    test "handles exceptions" do
+    test "catches exception and logs error with stacktrace" do
       expect(Sentry.MockClient, :post, fn _url, _headers, _body -> raise "oops" end)
 
       try do
         apply(Event, :not_a_function, [])
       rescue
         e ->
-          capture_log(fn ->
-            {:ok, task} = Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
+          log =
+            capture_log(fn ->
+              {:ok, task} =
+                Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
 
-            assert {:error,
-                    {:request_failure, {:error, %RuntimeError{message: "oops"}, _stacktrace}}} =
-                     Task.await(task)
-          end)
+              assert {:error, {:request_failure, {:error, %RuntimeError{message: "oops"}}}} =
+                       Task.await(task)
+            end)
+
+          assert log =~ """
+                 Failed to send Sentry event. Attempt 1.
+                 ** (RuntimeError) oops
+                     test/client_test.exs:\
+                 """
       end
     end
   end
