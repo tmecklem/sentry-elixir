@@ -1,6 +1,7 @@
 defmodule Sentry.ClientTest do
   use ExUnit.Case
   import ExUnit.CaptureLog
+  import Mox
   import Sentry.TestEnvironmentHelper
   require Logger
 
@@ -353,5 +354,63 @@ defmodule Sentry.ClientTest do
     assert capture_log(fn ->
              Sentry.capture_message("something happened", extra: %{metadata: [keyword: "list"]})
            end) =~ "Failed to send Sentry event. Unable to encode JSON"
+  end
+
+  describe "exceptions, throws, and exits" do
+    setup :verify_on_exit!
+
+    setup do
+      modify_env(:sentry,
+        dsn: "http://public:secret@localhost:0/1",
+        client: Sentry.MockClient
+      )
+
+      :ok
+    end
+
+    test "handles exits" do
+      expect(Sentry.MockClient, :post, fn _url, _headers, _body -> exit(:timeout) end)
+
+      try do
+        apply(Event, :not_a_function, [])
+      rescue
+        e ->
+          capture_log(fn ->
+            {:ok, task} = Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
+            assert {:error, {:request_failure, {:exit, :timeout, _stacktrace}}} = Task.await(task)
+          end)
+      end
+    end
+
+    test "handles throws" do
+      expect(Sentry.MockClient, :post, fn _url, _headers, _body -> throw(:error) end)
+
+      try do
+        apply(Event, :not_a_function, [])
+      rescue
+        e ->
+          capture_log(fn ->
+            {:ok, task} = Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
+            assert {:error, {:request_failure, {:throw, :error, _stacktrace}}} = Task.await(task)
+          end)
+      end
+    end
+
+    test "handles exceptions" do
+      expect(Sentry.MockClient, :post, fn _url, _headers, _body -> raise "oops" end)
+
+      try do
+        apply(Event, :not_a_function, [])
+      rescue
+        e ->
+          capture_log(fn ->
+            {:ok, task} = Sentry.capture_exception(e, stacktrace: __STACKTRACE__, result: :async)
+
+            assert {:error,
+                    {:request_failure, {:error, %RuntimeError{message: "oops"}, _stacktrace}}} =
+                     Task.await(task)
+          end)
+      end
+    end
   end
 end

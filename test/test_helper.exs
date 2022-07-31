@@ -5,6 +5,8 @@ Code.require_file("test/support/test_filter.exs")
 Code.require_file("test/support/test_gen_server.exs")
 Code.require_file("test/support/test_error_view.exs")
 
+Mox.defmock(Sentry.MockClient, for: Sentry.HTTPClient)
+
 ExUnit.start()
 Application.ensure_all_started(:bypass)
 Application.ensure_all_started(:telemetry)

@@ -217,6 +217,10 @@ defmodule Sentry.Client do
       e ->
         {:error, e}
     end
+  catch
+    :exit, data -> {:error, {:exit, data, __STACKTRACE__}}
+    :throw, data -> {:error, {:throw, data, __STACKTRACE__}}
+    :error, data -> {:error, {:error, data, __STACKTRACE__}}
   end
 
   @doc """
@@ -359,7 +363,14 @@ defmodule Sentry.Client do
             "Unable to encode JSON Sentry error - #{inspect(error)}"
 
           {:error, {:request_failure, last_error}} ->
-            "Error in HTTP Request to Sentry - #{inspect(last_error)}"
+            case last_error do
+              {kind, data, stacktrace}
+              when kind in [:exit, :throw, :error] and is_list(stacktrace) ->
+                ["\n\n", Exception.format(kind, data, stacktrace)]
+
+              _other ->
+                "Error in HTTP Request to Sentry - #{inspect(last_error)}"
+            end
 
           {:error, error} ->
             inspect(error)
