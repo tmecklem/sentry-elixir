@@ -1,4 +1,4 @@
-use Mix.Config
+import Config
 
 config :sentry,
   included_environments: [:test, :dev, :prod],
@@ -7,4 +7,4 @@ config :sentry,
   enable_source_code_context: true,
   root_source_code_paths: [File.cwd!()]
 
-import_config "#{Mix.env()}.exs"
+import_config "#{config_env()}.exs"
